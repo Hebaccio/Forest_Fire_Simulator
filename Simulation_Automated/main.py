@@ -94,7 +94,8 @@ def spread_fire(grid, moisture_map, burn_timers, drying_effect, rain_active):
     new_moisture = np.clip(new_moisture - drying_effect * wind_strength, 0, 1)
     return new_grid, new_moisture, new_burn_timers
 
-def save_to_excel(humidity, precipitation_strength, precipitation_chance, wind_strength, drying_effect, burned_cells, burned_percentage, steps_taken):
+# Modified function to save results to Excel and print progress
+def save_to_excel(humidity, precipitation_strength, precipitation_chance, wind_strength, drying_effect, burned_cells, burned_percentage, steps_taken, current_simulation, total_combinations):
     filename = "ForestFireSimulation.xlsx"
     
     if not os.path.exists(filename):
@@ -115,11 +116,15 @@ def save_to_excel(humidity, precipitation_strength, precipitation_chance, wind_s
     ws.append([humidity, precipitation_strength, precipitation_chance, wind_strength, drying_effect,
                burned_cells, burned_percentage, steps_taken])
     wb.save(filename)
-    print(f"Results saved to {filename}")
+    print(f"Results saved to {filename} {current_simulation}/{total_combinations}")
 
-# New function to simulate without visualization
-def run_simulation_without_visuals(forest, moisture_map, burn_timers, drying_effect):
-    total_cells = rows * cols
+# Modified function to save results with progress
+def run_simulation_without_visuals(forest, moisture_map, burn_timers, drying_effect, current_simulation, total_combinations):
+    global total_trees  # Use the global variable for total trees
+
+    if total_trees == 0:  # Safety check in case there are no trees
+        raise ValueError("No trees in the landscape to simulate burning.")
+
     steps_taken = 0
 
     while True:
@@ -133,13 +138,23 @@ def run_simulation_without_visuals(forest, moisture_map, burn_timers, drying_eff
         forest, moisture_map, burn_timers = spread_fire(forest, moisture_map, burn_timers, drying_effect, rain_active)
 
     burned_cells = np.sum(forest == 5)
-    burned_percentage = (burned_cells / total_cells) * 100
+    burned_percentage = (burned_cells / total_trees) * 100  # Divide by total trees
 
-    # Save results to Excel
-    save_to_excel(humidity, precipitation_strength, precipitation_chance, wind_strength, drying_effect, burned_cells, burned_percentage, steps_taken)
+    # Save results to Excel with progress information
+    save_to_excel(humidity, precipitation_strength, precipitation_chance, wind_strength, drying_effect,
+                  burned_cells, burned_percentage, steps_taken, current_simulation, total_combinations)
 
 def start_simulation_without_visuals():
-    global forest, moisture_map, burn_timers  # Declare as global here
+    # Check if the landscape has been generated
+    if initial_forest is None or initial_moisture_map is None or initial_burn_timers is None:
+        raise ValueError("Landscape not generated. Please generate the landscape before running simulations.")
+    
+    global forest, moisture_map, burn_timers  # Use the saved initial landscape
+    forest = initial_forest.copy()
+    moisture_map = initial_moisture_map.copy()
+    burn_timers = initial_burn_timers.copy()
+
+    # Ignite a fire and start the simulation
     forest, burn_timers = ignite_random_fire(forest, burn_timers)
     drying_effect = wind_strength
     simulation_thread = Thread(target=run_simulation_without_visuals, args=(forest, moisture_map, burn_timers, drying_effect), daemon=True)
@@ -152,8 +167,14 @@ def run_simulation_with_all_combinations():
     # Possible values for parameters
     values = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
     
+    # Calculate the total number of combinations
+    total_combinations = len(values) ** 4
+    current_simulation = 0  # Counter for the current simulation
+    
     # Iterate through all combinations of parameters
     for humidity_val, precipitation_strength_val, precipitation_chance_val, wind_strength_val in product(values, repeat=4):
+        current_simulation += 1  # Increment the simulation counter
+        
         # Set the global parameters
         global humidity, precipitation_strength, precipitation_chance, wind_strength
         humidity = humidity_val
@@ -162,21 +183,26 @@ def run_simulation_with_all_combinations():
         wind_strength = wind_strength_val
 
         # Initialize the landscape
-        forest, moisture_map, burn_timers = initialize_forest(rows, cols)
-        forest = add_rock_clusters(forest, num_clusters=50, max_cluster_size=5)
-        forest = add_water_clusters(forest, probability=0.15, sigma=3, threshold=0.2)
+        forest = initial_forest.copy()
+        moisture_map = initial_moisture_map.copy()
+        burn_timers = initial_burn_timers.copy()
 
         # Ignite a fire
         forest, burn_timers = ignite_random_fire(forest, burn_timers)
 
         # Run the simulation
         drying_effect = wind_strength
-        run_simulation_without_visuals(forest, moisture_map, burn_timers, drying_effect)
+        run_simulation_without_visuals(forest, moisture_map, burn_timers, drying_effect, current_simulation, total_combinations)
 
     print("Simulations for all parameter combinations completed.")
 
 # Modified button function to trigger the automated simulations
 def start_simulation_with_automation():
+    # Check if the landscape has been generated
+    if initial_forest is None or initial_moisture_map is None or initial_burn_timers is None:
+        raise ValueError("Landscape not generated. Please generate the landscape before running simulations.")
+    
+    # Start the automated simulations in a new thread
     simulation_thread = Thread(target=run_simulation_with_all_combinations, daemon=True)
     simulation_thread.start()
 
@@ -194,10 +220,24 @@ def main():
     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
 
     def generate_landscape():
-        global forest, moisture_map, burn_timers  # Declare as global here
+        global forest, moisture_map, burn_timers
+        global initial_forest, initial_moisture_map, initial_burn_timers, total_trees  # Add total_trees to track the count
+        
+        # Generate the landscape
         forest, moisture_map, burn_timers = initialize_forest(rows, cols)
         forest = add_rock_clusters(forest, num_clusters=50, max_cluster_size=5)
         forest = add_water_clusters(forest, probability=0.15, sigma=3, threshold=0.2)
+        
+        # Save the initial state
+        initial_forest = forest.copy()
+        initial_moisture_map = moisture_map.copy()
+        initial_burn_timers = burn_timers.copy()
+        
+        # Count the number of trees (values 1 and 6)
+        total_trees = np.sum((forest == 1) | (forest == 6))
+        print(f"Total number of trees in the generated landscape: {total_trees}")
+        
+        # Visualize the generated landscape
         ax.clear()
         ax.imshow(forest, cmap=mcolors.ListedColormap(['#654321', 'green', 'red', 'blue', 'grey', '#3d251e', '#5fa15f']),
                 norm=mcolors.BoundaryNorm([-0.5, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5], 7))
