@@ -23,6 +23,7 @@ stop_simulation_event = Event()
 initial_forest = None
 initial_moisture_map = None
 initial_burn_timers = None
+total_trees = 0
 
 def initialize_forest(rows, cols):
     forest = np.random.choice([1, 6], size=(rows, cols), p=[0.6, 0.4])
@@ -92,8 +93,12 @@ def spread_fire(grid, moisture_map, burn_timers, drying_effect, rain_active):
     return new_grid, new_moisture, new_burn_timers
 
 def run_simulation(forest, moisture_map, burn_timers, canvas, ax, drying_effect, result_label):
+    
+    global total_trees
     global stop_simulation_event
     stop_simulation_event.clear()
+
+    total_trees = np.sum((forest == 1) | (forest == 6))
 
     cmap = mcolors.ListedColormap(['#654321', 'green', 'red', 'blue', 'grey', '#3d251e', '#5fa15f'])
     bounds = [-0.5, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5]
@@ -123,7 +128,7 @@ def run_simulation(forest, moisture_map, burn_timers, canvas, ax, drying_effect,
 
     # Simulation ended, calculate and update results
     burned_cells = np.sum(forest == 5)
-    burned_percentage = (burned_cells / total_cells) * 100
+    burned_percentage = (burned_cells / total_trees) * 100
     result_text = (f"Simulation Results:\n"
                    f"Total burned m²: {burned_cells}\n"
                    f"% burned: {burned_percentage:.2f}%\n"
@@ -133,7 +138,7 @@ def run_simulation(forest, moisture_map, burn_timers, canvas, ax, drying_effect,
 def main():
     global initial_forest, initial_moisture_map, initial_burn_timers, results_window, results_label
     global humidity, precipitation_strength, precipitation_chance, wind_strength
-    global humidity_input, precipitation_strength_input, precipitation_chance_input, wind_strength_input
+    global humidity_input, precipitation_strength_input, precipitation_chance_input, wind_strength_input, total_trees
 
     root = tk.Tk()
     root.title("Fire Simulation")
